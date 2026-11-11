@@ -2078,10 +2078,15 @@ VkPipeline build_graphics(const Program& p, const NvnState& s, const Targets& at
         // tables) hung the GPU when the driver's optimizer built them: a device lost one to four minutes into Kokiri, each time with
         // another of them first (RX 6600, issues 461 and 484); never in runs where they were built without it. They are built
         // without it on AMD. RX_VK_MESH_OPT=1: with it, as the others)
+        // AMD's own drivers only. Mesa's RADV is the other way round: on the Steam Deck (Van Gogh, RDNA2) the foliage culling
+        // mesh program 89ca750f9852b7ca built without the optimizer wedged the GPU about 30 s after a save loaded in Kokiri, every
+        // run (ring gfx timeout, then a reset; issue 1000); built with it, the forest plays
         static const bool amd = [] {
-            VkPhysicalDeviceProperties pr{};
-            vkGetPhysicalDeviceProperties(dev.physical, &pr);
-            return pr.vendorID == 0x1002;
+            VkPhysicalDeviceDriverProperties dp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+            VkPhysicalDeviceProperties2 pr{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+            pr.pNext = &dp;
+            vkGetPhysicalDeviceProperties2(dev.physical, &pr);
+            return pr.properties.vendorID == 0x1002 && dp.driverID != VK_DRIVER_ID_MESA_RADV;
         }();
         static const bool mesh_opt = getenv("RX_VK_MESH_OPT") != nullptr;
         if (amd && !mesh_opt) {
