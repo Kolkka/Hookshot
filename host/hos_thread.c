@@ -861,9 +861,18 @@ static void sleep_ns(int64_t ns) {
     return;
 #endif
     /* Under a millisecond: yielded away until the time (the timer's ~0.5 ms granularity made TOTK's 20 us waits for
-       its job workers 25x longer, ~2000 a second on the frame's critical path). HOS_SHORT_SLEEP_TIMER=1: as before */
+       its job workers 25x longer, ~2000 a second on the frame's critical path). HOS_SHORT_SLEEP_TIMER=1: as before.
+       Windows only. Linux's timer (clock_nanosleep, win32_posix.c) wakes within its slack, ~50 us, and the yields burned
+       the CPU instead: OoT's job wait (f_800998a0, a 20 us SleepThread between looks) ran 35,000 times a second there on
+       the Steam Deck, its workers each in the kernel 0.4-0.6 s a second (sched_yield, ~20,000 switches a second each),
+       and the APU's 15 W went to the CPU (11.8 W) with the GPU held at ~220 MHz: Kokiri 6.6 fps. Slept, 7.9 (the GPU
+       ~300 MHz). HOS_SHORT_SLEEP_TIMER=0 on Linux: yielded, as before */
     static int short_timer = -1;
+#ifdef _WIN32
     if (short_timer < 0) short_timer = getenv("HOS_SHORT_SLEEP_TIMER") != NULL;
+#else
+    if (short_timer < 0) short_timer = getenv("HOS_SHORT_SLEEP_TIMER") ? atoi(getenv("HOS_SHORT_SLEEP_TIMER")) != 0 : 1;
+#endif
     if (ns < 1000000 && !short_timer) {
         while (hos_now_ns() < until)
             if (!SwitchToThread()) YieldProcessor();
